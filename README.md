@@ -3,5 +3,5 @@
 ## Members
 Nathan Bitner    
 Calvin Madsen    
-Tonmoy Rakshit     
-Zinat Adeleye
+Tonmoy Rakshit          
+Zinat Adeleye 
