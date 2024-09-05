@@ -1,0 +1,6 @@
+#!/bin/bash
+# npm install --save-dev @types/node
+# npm install typescript --save-dev
+
+.././node_modules/.bin/tsc
+node build/index.js "$@"
