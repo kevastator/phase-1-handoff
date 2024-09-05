@@ -3,3 +3,6 @@
 *.env
 *.log
 build/
+dist/
+node_modules/
+Phase\ 1/package*
