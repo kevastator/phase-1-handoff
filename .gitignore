@@ -1,0 +1,4 @@
+# Files to be ingored by git
+
+*.env
+*.log
