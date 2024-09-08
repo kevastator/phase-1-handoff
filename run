@@ -1,6 +1,0 @@
-#!/bin/bash
-# npm install --save-dev @types/node
-# npm install typescript --save-dev
-
-tsc -p "Phase 1"/src
-node "Phase 1"/src/build/index.js "$@"

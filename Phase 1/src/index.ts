@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 
-const LOG_FILE = process.env.LOG_FILE || 'Phase 1/src/logs/app.log';
+const LOG_FILE = process.env.LOG_FILE || 'logs/app.log';
 const LOG_LEVEL = parseInt(process.env.LOG_LEVEL || '1', 10);
 
 async function log(message: string, level: number = 1): Promise<void> {

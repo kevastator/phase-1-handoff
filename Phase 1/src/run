@@ -1,0 +1,11 @@
+#!/bin/bash
+
+if [ $1 == "install" ]; then
+    sudo apt-get update
+    npm install 
+
+else
+    ./node_modules/.bin/tsc
+    node build/index.js "$@"
+fi
+
