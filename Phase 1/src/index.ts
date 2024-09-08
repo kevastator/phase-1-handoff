@@ -1,13 +1,20 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 
-const LOG_FILE = process.env.LOG_FILE || '../logs/app.log';
+const LOG_FILE = process.env.LOG_FILE || 'Phase 1/src/logs/app.log';
 const LOG_LEVEL = parseInt(process.env.LOG_LEVEL || '1', 10);
 
 async function log(message: string, level: number = 1): Promise<void> {
   if (level <= LOG_LEVEL) {
     const logMessage = `${new Date().toISOString()} - ${message}\n`;
-    await fs.appendFile(LOG_FILE, logMessage);
+    try {
+      await fs.appendFile(LOG_FILE, logMessage);
+    } catch (error) {
+      // LOG_FILE does not exist, create the directory
+      const logDir = path.dirname(LOG_FILE);
+      await fs.mkdir(logDir, { recursive: true });
+      await fs.appendFile(LOG_FILE, logMessage);
+    }
   }
 }
 
