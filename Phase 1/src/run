@@ -1,6 +1,11 @@
 #!/bin/bash
-# npm install --save-dev @types/node
-# npm install typescript --save-dev
 
-.././node_modules/.bin/tsc
-node build/index.js "$@"
+if [ $1 == "install" ]; then
+    sudo apt-get update
+    npm install 
+
+else
+    ./node_modules/.bin/tsc
+    node build/index.js "$@"
+fi
+

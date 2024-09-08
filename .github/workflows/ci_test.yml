@@ -1,0 +1,26 @@
+name: Testing run script options
+
+on: [push, pull_request]
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: checkout code
+      uses: actions/checkout@v3
+      
+    - name: Install Case
+      run: |
+        cd Phase\ 1/src
+        ./run install
+        
+    - name: Test Case
+      run: |
+        cd Phase\ 1/src
+        ./run test
+        
+    - name: URL Case
+      run: |
+        cd Phase\ 1/src
+        ./run ../reference/SampleUrlFile.txt
