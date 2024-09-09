@@ -26,7 +26,7 @@ async function log(message: string, level: number = 1): Promise<void> {
 
 async function install(): Promise<void> {
   // TODO: Implement dependency installation
-  console.log('Installing dependencies...');
+  console.log('Installing dependencies...', 1);
   await log('Installation completed', 1);
 }
 
@@ -38,11 +38,11 @@ async function processURLs(urlFile: string): Promise<void> {
     for (const url of urlList) {
       // TODO: Implement URL processing and scoring
       console.log(`Processing URL: ${url}`);
-      await log(`Processed URL: ${url}`, 2);
+      await log(`Processed URL: ${url}`, 1);
     }
   } catch (error) {
     console.error('Error processing URLs:', error);
-    await log(`Error processing URLs: ${error}`, 1);
+    await log(`Error processing URLs: ${error}`, 2);
     process.exit(1);
   }
 }
@@ -59,19 +59,19 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'install':
-      log('Install Case');
+      log('Install Case', 1);
       await install();
       break;
     case 'test':
-      log('Test Case');
+      log('Test Case', 1);
       await runTests();
       break;
     default:
       if (command) {
-        log('URL Case');
+        log('URL Case', 1);
         await processURLs(command);
       } else {
-        log(`Invalid command ${command}. Usage: ./run [install|test|URL_FILE]`);
+        log(`Invalid command ${command}. Usage: ./run [install|test|URL_FILE]`, 2);
         console.error('Invalid command. Usage: ./run [install|test|URL_FILE]');
         process.exit(1);
       }
