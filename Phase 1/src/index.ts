@@ -1,26 +1,32 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 
+// 0 means silent, 1 means informational messages, 2 means debug messages). Default log verbosity is 0.
 const LOG_FILE = process.env.LOG_FILE || 'logs/app.log';
-const LOG_LEVEL = parseInt(process.env.LOG_LEVEL || '1', 10);
+const LOG_LEVEL = parseInt(process.env.LOG_LEVEL || '0', 10);
 
 async function log(message: string, level: number = 1): Promise<void> {
+
   if (level <= LOG_LEVEL) {
-    const logMessage = `${new Date().toISOString()} - ${message}\n`;
-    try {
-      await fs.appendFile(LOG_FILE, logMessage);
-    } catch (error) {
-      // LOG_FILE does not exist, create the directory
+    // Check if the log file exists
+    const logFileExists = await fs.access(LOG_FILE)
+    .then(() => true)
+    .catch(() => false);
+
+    if (!logFileExists) {
       const logDir = path.dirname(LOG_FILE);
       await fs.mkdir(logDir, { recursive: true });
-      await fs.appendFile(LOG_FILE, logMessage);
     }
+
+    // Append the message to the log file
+    const logMessage = `${new Date().toISOString()} - ${message}\n`;
+    await fs.appendFile(LOG_FILE, logMessage);
   }
 }
 
 async function install(): Promise<void> {
   // TODO: Implement dependency installation
-  console.log('Installing dependencies...');
+  console.log('Installing dependencies...', 1);
   await log('Installation completed', 1);
 }
 
@@ -32,11 +38,11 @@ async function processURLs(urlFile: string): Promise<void> {
     for (const url of urlList) {
       // TODO: Implement URL processing and scoring
       console.log(`Processing URL: ${url}`);
-      await log(`Processed URL: ${url}`, 2);
+      await log(`Processed URL: ${url}`, 1);
     }
   } catch (error) {
     console.error('Error processing URLs:', error);
-    await log(`Error processing URLs: ${error}`, 1);
+    await log(`Error processing URLs: ${error}`, 2);
     process.exit(1);
   }
 }
@@ -53,19 +59,19 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'install':
-      log('Install Case');
+      log('Install Case', 1);
       await install();
       break;
     case 'test':
-      log('Test Case');
+      log('Test Case', 1);
       await runTests();
       break;
     default:
       if (command) {
-        log('URL Case');
+        log('URL Case', 1);
         await processURLs(command);
       } else {
-        log(`Invalid command ${command}. Usage: ./run [install|test|URL_FILE]`);
+        log(`Invalid command ${command}. Usage: ./run [install|test|URL_FILE]`, 2);
         console.error('Invalid command. Usage: ./run [install|test|URL_FILE]');
         process.exit(1);
       }
