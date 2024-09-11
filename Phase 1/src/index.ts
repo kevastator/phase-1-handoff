@@ -34,15 +34,131 @@ async function log(message: string, level: number = 1): Promise<void> {
       await fs.appendFile(LOG_FILE, logMessage);
   }
 }
+interface MetricResult {
+  score: number;
+  latency: number;
+}
 
+// Base Metric class
+abstract class Metric {
+  protected url: string;
+  public weight: number;
+
+  constructor(url: string, weight: number) {
+    this.url = url;
+    this.weight = weight;
+  }
+
+  abstract calculate(): Promise<MetricResult>;
+}
+
+// Child classes for each metric
+class RampUp extends Metric {
+  constructor(url: string) {
+    super(url, 1);
+  }
+
+  async calculate(): Promise<MetricResult> {
+    // TODO: Implement RampUp calculation
+    return { score: 0.5, latency: 0.023 };
+  }
+}
+
+class Correctness extends Metric {
+  constructor(url: string) {
+    super(url, 1);
+  }
+
+  async calculate(): Promise<MetricResult> {
+    // TODO: Implement Correctness calculation
+    return { score: 0.7, latency: 0.005 };
+  }
+}
+
+class BusFactor extends Metric {
+  constructor(url: string) {
+    super(url, 1);
+  }
+
+  async calculate(): Promise<MetricResult> {
+    // TODO: Implement BusFactor calculation
+    return { score: 0.3, latency: 0.002 };
+  }
+}
+
+class ResponsiveMaintainer extends Metric {
+  constructor(url: string) {
+    super(url, 3);  // Weight is 3 for ResponsiveMaintainer
+  }
+
+  async calculate(): Promise<MetricResult> {
+    // TODO: Implement ResponsiveMaintainer calculation
+    return { score: 0.4, latency: 0.002 };
+  }
+}
+
+class License extends Metric {
+  constructor(url: string) {
+    super(url, 1);
+  }
+
+  async calculate(): Promise<MetricResult> {
+    // TODO: Implement License calculation
+    return { score: 1, latency: 0.001 };
+  }
+}
+
+// URL Handler class
+class URLHandler {
+  private url: string;
+  private metrics: Metric[];
+
+  constructor(url: string) {
+    this.url = url;
+    this.metrics = [
+      new RampUp(url),
+      new Correctness(url),
+      new BusFactor(url),
+      new ResponsiveMaintainer(url),
+      new License(url)
+    ];
+  }
+
+  async processURL(): Promise<string> {
+    const results: any = { URL: this.url };
+    let weightedScoreSum = 0;
+    let totalWeight = 0;
+    let netScoreLatency = 0;
+
+    for (const metric of this.metrics) {
+      const metricName = metric.constructor.name;
+      const { score, latency } = await metric.calculate();
+
+      results[metricName] = score;
+      results[`${metricName}_Latency`] = latency;
+
+      weightedScoreSum += score * metric.weight;
+      totalWeight += metric.weight;
+      netScoreLatency += latency;
+    }
+
+    results.NetScore = weightedScoreSum / totalWeight;
+    results.NetScore_Latency = netScoreLatency;
+
+    return JSON.stringify(results);
+  }
+}
+
+// Main function to process URLs
 async function processURLs(urlFile: string): Promise<void> {
   try {
     const urls = await fs.readFile(urlFile, 'utf-8');
     const urlList = urls.split('\n').filter(url => url.trim() !== '');
 
     for (const url of urlList) {
-      // TODO: Implement URL processing and scoring
-      console.log(`Processing URL: ${url}`);
+      const handler = new URLHandler(url);
+      const result = await handler.processURL();
+      console.log(result);
       await log(`Processed URL: ${url}`, 1);
     }
   } catch (error) {
