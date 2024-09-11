@@ -34,7 +34,7 @@ fi
 if [ "$1" == "install" ]; then
     # Update the package list
     log 1 "Running apt-get update"
-    sudo apt-get update
+    sudo apt-get update -qq
     if [ $? -ne 0 ]; then
         log 1 "Error: apt-get update failed"
         echo "Error: apt-get update failed"
@@ -44,13 +44,23 @@ if [ "$1" == "install" ]; then
 
     # Install nodejs dependencies
     log 1 "Running npm install"
-    npm install
+    npm_output=$(npm install 2>&1)
     if [ $? -ne 0 ]; then
         log 1 "Error: npm install failed"
         echo "Error: npm install failed"
         exit 1
     fi
     log 1 "npm install completed successfully"
+
+    # Extract the number of added packages from npm output
+    added_packages=$(echo "$npm_output" | grep -oE 'added [0-9]+' | awk '{print $2}')
+
+    # Check if the number of added packages was extracted correctly
+    if [ -n "$added_packages" ]; then
+        echo "$added_packages dependencies installed..."
+    else
+        echo "Dependencies are fully up to date"
+    fi
 else
     # Build and run the project
     log 1 "Building the project"
