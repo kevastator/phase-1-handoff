@@ -43,14 +43,26 @@ async function processURLs(urlFile: string): Promise<void> {
     const urlList = urls.split('\n').filter(url => url.trim() !== '');
 
     for (const url of urlList) {
-      console.log(`Processing URL: ${url}`);
+      // console.log(`Processing URL: ${url}`);
+      await log(`Processing URL: ${url}`, 1);
       // error checking for each URL
       if (!isValidUrl(url)) {
         console.error(`Invalid URL: ${url}`);
         await log(`Invalid URL: ${url}`, 2);
-        process.exit(1);
       }
-      await log(`Processed URL: ${url}`, 1);
+      else{
+
+        if (url.includes('github.com') ){
+          await console.log(`Processed Github URL: ${url}`);
+        }
+        else if (url.includes('npmjs.com')){
+          await console.log(`Processed NPM URL: ${url}`);
+        }
+        else{
+          await console.log(`Processed other URL: ${url}`);
+        }
+        await log(`Finished Processing URL: ${url}`, 1);
+      }
     }
   } catch (error) { //error reading file
     console.error('Error processing URLs:', error);
