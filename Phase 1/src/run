@@ -1,11 +1,26 @@
 #!/bin/bash
 
-if [ $1 == "install" ]; then
+if [ "$1" == "install" ]; then
+
+    # Update the package list
     sudo apt-get update
-    npm install 
+    if [ $? -ne 0 ]; then
+        echo "Error: apt-get update failed"
+        exit 1
+    fi
+
+    # Install nodejs dependencies
+    npm install
+    if [ $? -ne 0 ]; then
+        echo "Error: npm install failed"
+        exit 1
+    fi
 
 else
+
+    # Build and run the project
     ./node_modules/.bin/tsc
     node build/index.js "$@"
+
 fi
 
