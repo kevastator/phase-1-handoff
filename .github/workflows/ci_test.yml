@@ -1,4 +1,4 @@
-name: Testing run script options
+name: CI Pipeline
 
 on: [push, pull_request]
   
@@ -9,6 +9,13 @@ jobs:
     steps:
     - name: checkout code
       uses: actions/checkout@v3
+
+    - name: Use GitHub Token
+      env:
+        TOKEN: ${{ secrets.TOKEN }}
+      run: |
+        echo "Using GitHub Token"
+        curl -H "Authorization: token $TOKEN" https://api.github.com
       
     - name: Install Case
       run: |
