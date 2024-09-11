@@ -29,18 +29,30 @@ async function install(): Promise<void> {
   console.log('Installing dependencies...', 1);
   await log('Installation completed', 1);
 }
-
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
 async function processURLs(urlFile: string): Promise<void> {
   try {
     const urls = await fs.readFile(urlFile, 'utf-8');
     const urlList = urls.split('\n').filter(url => url.trim() !== '');
 
     for (const url of urlList) {
-      // TODO: Implement URL processing and scoring
       console.log(`Processing URL: ${url}`);
+      // error checking for each URL
+      if (!isValidUrl(url)) {
+        console.error(`Invalid URL: ${url}`);
+        await log(`Invalid URL: ${url}`, 2);
+        process.exit(1);
+      }
       await log(`Processed URL: ${url}`, 1);
     }
-  } catch (error) {
+  } catch (error) { //error reading file
     console.error('Error processing URLs:', error);
     await log(`Error processing URLs: ${error}`, 2);
     process.exit(1);
