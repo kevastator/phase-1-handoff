@@ -86,6 +86,7 @@ class BusFactor extends Metric {
   }
 }
 
+
 class ResponsiveMaintainer extends Metric {
   constructor(url: string) {
     super(url, 3);  // Weight is 3 for ResponsiveMaintainer
@@ -150,18 +151,50 @@ class URLHandler {
 }
 
 // Main function to process URLs
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function processURLs(urlFile: string): Promise<void> {
   try {
     const urls = await fs.readFile(urlFile, 'utf-8');
     const urlList = urls.split('\n').filter(url => url.trim() !== '');
 
     for (const url of urlList) {
+
       const handler = new URLHandler(url);
       const result = await handler.processURL();
       console.log(result);
       await log(`Processed URL: ${url}`, 1);
+
+      // console.log(`Processing URL: ${url}`);
+      await log(`Processing URL: ${url}`, 1);
+      // error checking for each URL
+      if (!isValidUrl(url)) {
+        console.error(`Invalid URL: ${url}`);
+        await log(`Invalid URL: ${url}`, 2);
+      }
+      else{
+
+        if (url.includes('github.com') ){
+          await console.log(`Processed Github URL: ${url}`);
+        }
+        else if (url.includes('npmjs.com')){
+          await console.log(`Processed NPM URL: ${url}`);
+        }
+        else{
+          await console.log(`Processed other URL: ${url}`);
+        }
+        await log(`Finished Processing URL: ${url}`, 1);
+      }
+
     }
-  } catch (error) {
+  } catch (error) { //error reading file
     console.error('Error processing URLs:', error);
     await log(`Error processing URLs: ${error}`, 2);
     process.exit(1);
