@@ -6,28 +6,33 @@ const LOG_FILE = process.env.LOG_FILE || 'logs/app.log';
 const LOG_LEVEL = parseInt(process.env.LOG_LEVEL || '0', 10);
 
 async function log(message: string, level: number = 1): Promise<void> {
-
   if (level <= LOG_LEVEL) {
-    // Check if the log file exists
-    const logFileExists = await fs.access(LOG_FILE)
-    .then(() => true)
-    .catch(() => false);
+      // Check if the log file exists
+      const logFileExists = await fs.access(LOG_FILE)
+          .then(() => true)
+          .catch(() => false);
 
-    if (!logFileExists) {
-      const logDir = path.dirname(LOG_FILE);
-      await fs.mkdir(logDir, { recursive: true });
-    }
+      if (!logFileExists) {
+          const logDir = path.dirname(LOG_FILE);
+          await fs.mkdir(logDir, { recursive: true });
+      }
 
-    // Append the message to the log file
-    const logMessage = `${new Date().toISOString()} - ${message}\n`;
-    await fs.appendFile(LOG_FILE, logMessage);
+      // Format the date
+      const now = new Date();
+      const formattedDate = now.toLocaleString('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+      }).replace(/(\d+)\/(\d+)\/(\d+),/, '$3-$1-$2');
+
+      // Append the message to the log file
+      const logMessage = `${formattedDate} - ${message}\n`;
+      await fs.appendFile(LOG_FILE, logMessage);
   }
-}
-
-async function install(): Promise<void> {
-  // TODO: Implement dependency installation
-  console.log('Installing dependencies...', 1);
-  await log('Installation completed', 1);
 }
 
 async function processURLs(urlFile: string): Promise<void> {
@@ -58,10 +63,6 @@ async function main(): Promise<void> {
   const command = process.argv[2];
 
   switch (command) {
-    case 'install':
-      log('Install Case', 1);
-      await install();
-      break;
     case 'test':
       log('Test Case', 1);
       await runTests();

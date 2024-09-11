@@ -1,11 +1,62 @@
 #!/bin/bash
 
-if [ $1 == "install" ]; then
-    sudo apt-get update
-    npm install 
+# Set default log level if not specified
+LOG_LEVEL=${LOG_LEVEL:-0}
 
+# Set default log file if not specified
+LOG_FILE=${LOG_FILE:-"logs/app.log"}
+
+# Ensure the logs directory exists
+LOG_DIR=$(dirname "$LOG_FILE")
+mkdir -p "$LOG_DIR"
+
+# Function to log messages
+log() {
+    local level=$1
+    local message=$2
+    if [ -n "$LOG_FILE" ] && [ "$LOG_LEVEL" -ge "$level" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - $message" >> "$LOG_FILE"
+    fi
+}
+
+# Check if LOG_FILE is set and create it if it doesn't exist
+if [ -n "$LOG_FILE" ]; then
+    if [ ! -f "$LOG_FILE" ]; then
+        touch "$LOG_FILE"
+        log 1 "Log file created: $LOG_FILE"
+    else
+        log 1 "Using existing log file: $LOG_FILE"
+    fi
 else
+    echo "Warning: LOG_FILE environment variable is not set. Logging is disabled."
+fi
+
+if [ "$1" == "install" ]; then
+    # Update the package list
+    log 1 "Running apt-get update"
+    sudo apt-get update
+    if [ $? -ne 0 ]; then
+        log 1 "Error: apt-get update failed"
+        echo "Error: apt-get update failed"
+        exit 1
+    fi
+    log 1 "apt-get update completed successfully"
+
+    # Install nodejs dependencies
+    log 1 "Running npm install"
+    npm install
+    if [ $? -ne 0 ]; then
+        log 1 "Error: npm install failed"
+        echo "Error: npm install failed"
+        exit 1
+    fi
+    log 1 "npm install completed successfully"
+else
+    # Build and run the project
+    log 1 "Building the project"
     ./node_modules/.bin/tsc
+    log 1 "Running the project"
     node build/index.js "$@"
 fi
 
+log 2 "Script execution completed"
