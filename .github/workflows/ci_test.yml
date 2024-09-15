@@ -5,6 +5,8 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+        GITHUB_TOKEN: ${{secrets.TOKEN}}
 
     steps:
     - name: checkout code
@@ -14,8 +16,6 @@ jobs:
       run: |
         echo "LOG_FILE=logs/app.log" >> $GITHUB_ENV
         echo "LOG_LEVEL=2" >> $GITHUB_ENV
-      env:
-        GITHUB_TOKEN: ${{secrets.TOKEN}}
       
     - name: Install Case
       run: |
