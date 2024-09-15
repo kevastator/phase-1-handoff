@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import axios from 'axios';
 
 // Check for required environment variables
 if (!process.env.LOG_FILE) {
@@ -115,8 +116,40 @@ class License extends Metric {
   }
 
   async calculate(): Promise<MetricResult> {
-    // TODO: Implement License calculation
-    return { score: 1, latency: 0.001 };
+    const startTime = Date.now();
+    
+    try {
+      // Extract owner and repo from the GitHub URL
+      const urlParts = this.url.split('/');
+      const owner = urlParts[3];
+      const repo = urlParts[4];
+
+      // Make a request to the GitHub API
+      const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/license`, {
+        headers: {
+          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+
+      // Calculate latency
+      const latency = (Date.now() - startTime) / 1000; // Convert to seconds
+
+      // If we get a successful response, it means the repo has a license
+      return { score: 1, latency };
+    } catch (error) {
+      // Calculate latency even if there's an error
+      const latency = (Date.now() - startTime) / 1000;
+
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        // If we get a 404, it means the repo doesn't have a license
+        return { score: 0, latency };
+      } else {
+        // For any other error, log it and return a score of 0
+        await log(`Error checking license for ${this.url}: ${error}`, 2);
+        return { score: 0, latency };
+      }
+    }
   }
 }
 
