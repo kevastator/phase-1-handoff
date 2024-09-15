@@ -9,6 +9,11 @@ jobs:
     steps:
     - name: checkout code
       uses: actions/checkout@v3
+
+    - name: Set Environment Variables
+      run: |
+        echo "LOG_FILE=logs/app.log" >> $GITHUB_ENV
+        echo "LOG_LEVEL=1" >> $GITHUB_ENV
       
     - name: Install Case
       run: |
