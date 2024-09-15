@@ -11,10 +11,11 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set Environment Variables
-      run: |
-        echo "LOG_FILE=logs/app.log" >> $GITHUB_ENV
-        echo "LOG_LEVEL=1" >> $GITHUB_ENV
-        echo "GITHUB_TOKEN=${{ secrets.TOKEN }}" >> $GITHUB_ENV
+      run: echo "Setting up environment variables"
+      env:
+        LOG_FILE: logs/app.log
+        LOG_LEVEL: 1
+        GITHUB_TOKEN: ${{secrets.TOKEN}}
       
     - name: Install Case
       run: |
