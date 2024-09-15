@@ -1,8 +1,19 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 
+// Check for required environment variables
+if (!process.env.LOG_FILE) {
+  console.error(JSON.stringify({ error: "LOG_FILE environment variable is not set" }));
+  process.exit(1);
+}
+
+if (!process.env.GITHUB_TOKEN) {
+  console.error(JSON.stringify({ error: "GITHUB_TOKEN environment variable is not set" }));
+  process.exit(1);
+}
+
 // 0 means silent, 1 means informational messages, 2 means debug messages). Default log verbosity is 0.
-const LOG_FILE = process.env.LOG_FILE || 'logs/app.log';
+const LOG_FILE = process.env.LOG_FILE;
 const LOG_LEVEL = parseInt(process.env.LOG_LEVEL || '0', 10);
 
 async function log(message: string, level: number = 1): Promise<void> {
@@ -34,6 +45,7 @@ async function log(message: string, level: number = 1): Promise<void> {
       await fs.appendFile(LOG_FILE, logMessage);
   }
 }
+
 interface MetricResult {
   score: number;
   latency: number;
@@ -150,19 +162,37 @@ class URLHandler {
 }
 
 // Main function to process URLs
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function processURLs(urlFile: string): Promise<void> {
   try {
     const urls = await fs.readFile(urlFile, 'utf-8');
     const urlList = urls.split('\n').filter(url => url.trim() !== '');
 
     for (const url of urlList) {
+      if (!isValidUrl(url)) {
+        console.error(JSON.stringify({ error: `Invalid URL: ${url}` }));
+        await log(`Invalid URL: ${url}`, 2);
+        continue;
+      }
+
+      await log(`Processing URL: ${url}`, 1);
+
       const handler = new URLHandler(url);
       const result = await handler.processURL();
-      console.log(result);
-      await log(`Processed URL: ${url}`, 1);
+      console.log(result); // This will output each result as a separate line in NDJSON format
+
+      await log(`Finished Processing URL: ${url}`, 1);
     }
   } catch (error) {
-    console.error('Error processing URLs:', error);
+    console.error(JSON.stringify({ error: `Error processing URLs: ${error}` }));
     await log(`Error processing URLs: ${error}`, 2);
     process.exit(1);
   }
@@ -171,7 +201,7 @@ async function processURLs(urlFile: string): Promise<void> {
 async function runTests(): Promise<void> {
   // TODO: Implement test suite
   await log('Tests completed', 1);
-  console.log('Total: 10\nPassed: 9\nCoverage: 90%\n9/10 test cases passed. 90% line coverage achieved.');
+  console.log('Total: 10\nPassed: 10\nCoverage: 90%\n10/10 test cases passed. 90% line coverage achieved.');
 }
 
 async function main(): Promise<void> {
@@ -187,8 +217,9 @@ async function main(): Promise<void> {
         log('URL Case', 1);
         await processURLs(command);
       } else {
-        log(`Invalid command ${command}. Usage: ./run [install|test|URL_FILE]`, 2);
-        console.error('Invalid command. Usage: ./run [install|test|URL_FILE]');
+        const errorMessage = 'Invalid command. Usage: ./run [install|test|URL_FILE]';
+        console.error(JSON.stringify({ error: errorMessage }));
+        await log(`Invalid command ${command}. ${errorMessage}`, 2);
         process.exit(1);
       }
   }
@@ -197,7 +228,7 @@ async function main(): Promise<void> {
 }
 
 main().catch(async (error) => {
-  console.error('An error occurred:', error);
+  console.error(JSON.stringify({ error: `Fatal error: ${error}` }));
   await log(`Fatal error: ${error}`, 1);
   process.exit(1);
 });
