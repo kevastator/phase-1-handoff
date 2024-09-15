@@ -150,7 +150,6 @@ class URLHandler {
   }
 }
 
-// Main function to process URLs
 function isValidUrl(url: string): boolean {
   try {
     new URL(url);
@@ -160,37 +159,34 @@ function isValidUrl(url: string): boolean {
   }
 }
 
+function extract_api_data(url: string): { owner: string, repo: string } {
+  const urlObj = new URL(url);
+  const pathParts = urlObj.pathname.split('/');
+  const owner = pathParts[1];
+  const repo = pathParts[2];
+  return { owner, repo };
+}
 async function processURLs(urlFile: string): Promise<void> {
   try {
     const urls = await fs.readFile(urlFile, 'utf-8');
     const urlList = urls.split('\n').filter(url => url.trim() !== '');
 
     for (const url of urlList) {
-
-      const handler = new URLHandler(url);
-      const result = await handler.processURL();
-      console.log(result);
-      await log(`Processed URL: ${url}`, 1);
-
-      // console.log(`Processing URL: ${url}`);
       await log(`Processing URL: ${url}`, 1);
+
       // error checking for each URL
       if (!isValidUrl(url)) {
         console.error(`Invalid URL: ${url}`);
         await log(`Invalid URL: ${url}`, 2);
       }
       else{
-
-        if (url.includes('github.com') ){
-          await console.log(`Processed Github URL: ${url}`);
-        }
-        else if (url.includes('npmjs.com')){
-          await console.log(`Processed NPM URL: ${url}`);
-        }
-        else{
-          await console.log(`Processed other URL: ${url}`);
-        }
-        await log(`Finished Processing URL: ${url}`, 1);
+        // process URL
+        const handler = new URLHandler(url);
+        console.log("TODO: output values fake data, use extract_api_data to run REST API");
+        console.log(extract_api_data(url));
+        const result = await handler.processURL();
+        console.log(result);
+        await log(`Processed URL: ${url}`, 1);
       }
 
     }
