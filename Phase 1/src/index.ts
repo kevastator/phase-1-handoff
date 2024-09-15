@@ -123,7 +123,7 @@ class License extends Metric {
       const urlParts = this.url.split('/');
       const owner = urlParts[3];
       const repo = urlParts[4];
-      console.log(owner, repo);
+
       // Make a request to the GitHub API
       const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/license`, {
         headers: {
