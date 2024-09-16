@@ -54,23 +54,58 @@ abstract class Metric {
 
 // Child classes for each metric
 class RampUp extends Metric {
+  protected discussionCount: number;
   constructor(url: string) {
     super(url, 1);
   }
 
   async calculate(): Promise<MetricResult> {
-    // TODO: Implement RampUp calculation
-    return { score: 0.5, latency: 0.023 };
-  }
-}
+    const startTime = Date.now();
+    this.discussionCount = 0;
+    try {
+      // Extract owner and repo from the GitHub URL
+      const urlParts = this.url.split('/');
+      const owner = urlParts[3];
+      const repo = urlParts[4];
 
+      // Make a request to the GitHub API
+      const discussionResponse = await axios.get(`https://api.github.com/repos/${owner}/${repo}/discussions`, {
+        headers: {
+          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+    } catch (error) {
+      
+      // calculate latency even if there's an error
+      const latency = (Date.now() - startTime) / 1000;
+
+      if (axios.isAxiosError(error) && error.response?.status === 410) {
+        // 410 means discussions are disabled
+        await log(`Discussions disabled on ${this.url}`, 2);
+      } else {
+        // For any other error, log it and return a score of 0
+        await log(`Error checking discussions for ${this.url}: ${error}`, 2);
+    //   }
+    }
+  }
+  
+    // TODO: clone repo and check for repo that way, can't do it with rest without parsing raw html
+
+    // Calculate latency
+    const latency = (Date.now() - startTime) / 1000; // Convert to seconds
+
+    // TODO: Implement discussionCount calculation
+    return { score: this.discussionCount, latency };
+}
+}
 class Correctness extends Metric {
   constructor(url: string) {
     super(url, 1);
   }
 
   async calculate(): Promise<MetricResult> {
-    // TODO: Implement Correctness calculation
+    // TODO: cloning may be needed
     return { score: 0.7, latency: 0.005 };
   }
 }
@@ -81,10 +116,9 @@ class BusFactor extends Metric {
   }
 
   async calculate(): Promise<MetricResult> {
-    // TODO: Implement BusFactor calculation
-    return { score: 0.3, latency: 0.002 };
+    return {score: 0.4, latency: 0.002};
+    }
   }
-}
 
 
 class ResponsiveMaintainer extends Metric {
