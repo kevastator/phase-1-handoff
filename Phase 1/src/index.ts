@@ -47,6 +47,27 @@ async function log(message: string, level: number = 1): Promise<void> {
   }
 }
 
+async function getGithubRepoFromNpm(packageName: string): Promise<string | null> {
+  try {
+    // Fetch package metadata from npm Registry
+    const response = await axios.get(`https://registry.npmjs.org/${packageName}`);
+    const data = response.data;
+
+    // Extract repository URL from metadata
+    const repository = data.repository;
+    if (repository && repository.type === 'git') {
+      // Return the GitHub repository URL if it's a git repository
+      return repository.url.replace(/^git\+/, '').replace(/\.git$/, '');
+    }
+
+    // Repository URL is not available or it's not a GitHub URL
+    return null;
+  } catch (error) {
+    console.error(`Error fetching data for package ${packageName}: ${error}`);
+    return null;
+  }
+}
+
 interface MetricResult {
   score: number;
   latency: number;
@@ -60,6 +81,10 @@ abstract class Metric {
   constructor(url: string, weight: number) {
     this.url = url;
     this.weight = weight;
+  }
+
+  setUrl(url: string): void {
+    this.url = url;
   }
 
   abstract calculate(): Promise<MetricResult>;
@@ -94,8 +119,49 @@ class BusFactor extends Metric {
   }
 
   async calculate(): Promise<MetricResult> {
-    // TODO: Implement BusFactor calculation
-    return { score: 0.3, latency: 0.002 };
+    const startTime = Date.now();
+      
+    try {
+      // Extract owner and repo from the GitHub URL
+      const urlParts = this.url.split('/');
+      const owner = urlParts[3];
+      const repo = urlParts[4];
+
+      // Make a request to the GitHub API to get the contributors
+      const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/contributors`, {
+        headers: {
+          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+
+      const contributors = response.data;
+      const contributorCount = contributors.length;
+
+      // Calculate latency
+      const latency = (Date.now() - startTime) / 1000; // Convert to seconds
+
+      // Define thresholds for scoring based on the number of contributors
+      let score = 0;
+      if (contributorCount >= 30) {
+        score = 1; // Very healthy project
+      } else {
+        score = contributorCount / 30; // Linear scaling for projects with less than 30 contributors
+      }
+
+      return { score, latency };
+
+    } catch (error) {
+      const latency = (Date.now() - startTime) / 1000;
+
+      // Handle errors, such as a repository with no contributors or API errors
+      if (axios.isAxiosError(error)) {
+        await log(`Error retrieving contributors for ${this.url}: ${error}`, 2);
+      }
+
+      // Return a score of 0 in case of any error
+      return { score: 0, latency };
+    }
   }
 }
 
@@ -153,7 +219,6 @@ class License extends Metric {
   }
 }
 
-// URL Handler class
 class URLHandler {
   private url: string;
   private metrics: Metric[];
@@ -169,13 +234,32 @@ class URLHandler {
     ];
   }
 
+  private async resolveNpmToGithub(url: string): Promise<string> {
+    if (url.includes("npmjs.com")) {
+      const packageName = url.split('/').pop();
+      const githubRepo = await getGithubRepoFromNpm(packageName);
+
+      if (githubRepo) {
+        await log(`Found GitHub repository for package ${packageName}: ${githubRepo}`, 1);
+        return githubRepo;
+      } else {
+        return url;
+      }
+    }
+    return url;
+  }
+
   async processURL(): Promise<string> {
     const results: any = { URL: this.url };
     let weightedScoreSum = 0;
     let totalWeight = 0;
     let netScoreLatency = 0;
 
+    // Resolve npm URL to GitHub if necessary
+    const resolvedUrl = await this.resolveNpmToGithub(this.url);
+
     for (const metric of this.metrics) {
+      metric.setUrl(resolvedUrl); // Update the URL for each metric
       const metricName = metric.constructor.name;
       const { score, latency } = await metric.calculate();
 
