@@ -242,6 +242,7 @@ class BusFactor extends Metric {
       return { score: 0, latency };
     }
   }
+}
 
 class ResponsiveMaintainer extends Metric {
   constructor(url: string) {
