@@ -1,18 +1,18 @@
 {
   "compilerOptions": {
-    "target": "es6",
+    "target": "ES2020",
     "module": "commonjs",
-    "outDir": "Phase 1/src/build",
-    "rootDir": "Phase 1/src",
+    "outDir": "build",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true
   },
   "include": [
-    "Phase 1/src/**/*.ts"
+    "/**/*.ts"
   ],
   "exclude": [
-    "Phase 1/src/build",
-    "Phase 1/src/node_modules"
+    "build",
+    "node_modules"
   ]
 }
