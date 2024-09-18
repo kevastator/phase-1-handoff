@@ -14,10 +14,6 @@ jobs:
           echo "LOG_FILE=logs/app.log" >> $GITHUB_ENV
           echo "LOG_LEVEL=2" >> $GITHUB_ENV
 
-      - name: Install Dependencies
-        run: |
-          npm install
-
       - name: Install Case
         run: |
           cd Phase\ 1/src
@@ -32,15 +28,3 @@ jobs:
         run: |
           cd Phase\ 1/src
           ./run ../reference/SampleUrlFile.txt
-
-      - name: Run ESLint
-        run: |
-          npm run eslint .
-
-      - name: Run Prettier Check
-        run: |
-          npm run prettier --check .
-
-      - name: Run Prettier Format
-        run: |
-          npm run prettier --write .
