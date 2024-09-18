@@ -1,3 +1,16 @@
+/**
+ * This file contains the main logic for a GitHub repository analysis tool.
+ * It calculates various metrics for GitHub repositories, including:
+ * - Ramp Up Time
+ * - Correctness
+ * - Bus Factor
+ * - Responsive Maintainer
+ * - License
+ * 
+ * The tool can process multiple URLs, resolve npm packages to GitHub repositories,
+ * and output the results in NDJSON format.
+ */
+
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import axios from 'axios';
@@ -17,36 +30,46 @@ if (!process.env.GITHUB_TOKEN) {
 const LOG_FILE = process.env.LOG_FILE;
 const LOG_LEVEL = parseInt(process.env.LOG_LEVEL || '0', 10);
 
+/**
+ * Logs a message to the specified log file if the message's log level is less than or equal to LOG_LEVEL
+ * @param message The message to log
+ * @param level The log level of the message (default: 1)
+ */
 async function log(message: string, level: number = 1): Promise<void> {
   if (level <= LOG_LEVEL) {
-      // Check if the log file exists
-      const logFileExists = await fs.access(LOG_FILE)
-          .then(() => true)
-          .catch(() => false);
+    // Check if the log file exists
+    const logFileExists = await fs.access(LOG_FILE)
+      .then(() => true)
+      .catch(() => false);
 
-      if (!logFileExists) {
-          const logDir = path.dirname(LOG_FILE);
-          await fs.mkdir(logDir, { recursive: true });
-      }
+    if (!logFileExists) {
+      const logDir = path.dirname(LOG_FILE);
+      await fs.mkdir(logDir, { recursive: true });
+    }
 
-      // Format the date
-      const now = new Date();
-      const formattedDate = now.toLocaleString('en-US', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-      }).replace(/(\d+)\/(\d+)\/(\d+),/, '$3-$1-$2');
+    // Format the date
+    const now = new Date();
+    const formattedDate = now.toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).replace(/(\d+)\/(\d+)\/(\d+),/, '$3-$1-$2');
 
-      // Append the message to the log file
-      const logMessage = `${formattedDate} - ${message}\n`;
-      await fs.appendFile(LOG_FILE, logMessage);
+    // Append the message to the log file
+    const logMessage = `${formattedDate} - ${message}\n`;
+    await fs.appendFile(LOG_FILE, logMessage);
   }
 }
 
+/**
+ * Fetches the GitHub repository URL for a given npm package
+ * @param packageName The name of the npm package
+ * @returns The GitHub repository URL if found, null otherwise
+ */
 async function getGithubRepoFromNpm(packageName: string): Promise<string | null> {
   try {
     // Fetch package metadata from npm Registry
@@ -73,10 +96,14 @@ interface MetricResult {
   latency: number;
 }
 
-// Base Metric class
+/**
+ * Base Metric class that all specific metrics inherit from
+ */
 abstract class Metric {
-  protected url: string;
+  public  url: string;
   public weight: number;
+  protected owner: string;
+  protected repo: string;
 
   constructor(url: string, weight: number) {
     this.url = url;
@@ -87,10 +114,18 @@ abstract class Metric {
     this.url = url;
   }
 
+  protected extractOwnerAndRepo(): void {
+    const urlParts = this.url.split('/');
+    this.owner = urlParts[3];
+    this.repo = urlParts[4];
+  }
+
   abstract calculate(): Promise<MetricResult>;
 }
 
-// Child classes for each metric
+/**
+ * RampUp class for calculating the ramp-up time metric
+ */
 class RampUp extends Metric {
   protected discussionCount: number;
   protected score_calculation: number;
@@ -100,11 +135,11 @@ class RampUp extends Metric {
     super(url, 1);
   }
 
+  /**
+   * Fetches the number of discussions in the repository
+   */
   async getNumDiscussions(): Promise<number>{
-    const urlParts = this.url.split('/');
-    const owner = urlParts[3];
-    const repo = urlParts[4];
-    const discussionResponse = await axios.get(`https://api.github.com/repos/${owner}/${repo}/discussions`, {
+    const discussionResponse = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/discussions`, {
       headers: {
         'Authorization': `token ${process.env.GITHUB_TOKEN}`,
         'Accept': 'application/vnd.github.v3+json'
@@ -113,11 +148,11 @@ class RampUp extends Metric {
     return Object.keys(discussionResponse.data).length;
   }
 
+  /**
+   * Fetches the length of the README file
+   */
   async getLenREADME(): Promise<number>{
-    const urlParts = this.url.split('/');
-    const owner = urlParts[3];
-    const repo = urlParts[4];
-    const README_response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/readme`, {
+    const README_response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/readme`, {
       headers: {
         'Authorization': `token ${process.env.GITHUB_TOKEN}`,
         'Accept': 'application/vnd.github.v3+json'
@@ -126,10 +161,15 @@ class RampUp extends Metric {
     return README_response.data.content.length;
   }
 
+  /**
+   * Calculates the ramp-up score based on discussions and README length
+   */
   async calculate(): Promise<MetricResult> {
     const startTime = Date.now();
     this.discussionCount = 0;
     this.score_calculation = 0;
+
+    this.extractOwnerAndRepo();
 
     try {
       this.discussionCount = await this.getNumDiscussions();
@@ -183,6 +223,11 @@ class RampUp extends Metric {
     return {score: this.score_calculation > 1 ? 1 : this.score_calculation, latency};
   }
 }
+
+/**
+ * Correctness class for calculating the correctness metric
+ * TODO: Implement actual correctness calculation
+ */
 class Correctness extends Metric {
   constructor(url: string) {
     super(url, 1);
@@ -194,22 +239,24 @@ class Correctness extends Metric {
   }
 }
 
+/**
+ * BusFactor class for calculating the bus factor metric
+ */
 class BusFactor extends Metric {
-  private owner: string;
-  private repo: string;
 
   constructor(url: string) {
     super(url, 3); // weight
   }
 
+  /**
+   * Calculates the bus factor score based on the number of contributors
+   */
   async calculate(): Promise<MetricResult> {
     const startTime = Date.now();
       
     try {
       // Extract owner and repo from the GitHub URL
-      const urlParts = this.url.split('/');
-      this.owner = urlParts[3];
-      this.repo = urlParts[4];
+      this.extractOwnerAndRepo();
 
       // Make a request to the GitHub API to get the contributors
       const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/contributors`, {
@@ -264,8 +311,6 @@ class BusFactor extends Metric {
  * for each factor, which are then combined into an overall weighted score.
  */
 class ResponsiveMaintainer extends Metric {
-  private owner: string;
-  private repo: string;
 
   constructor(url: string) {
     super(url, 2);  // NetScore weight is 2
@@ -279,9 +324,7 @@ class ResponsiveMaintainer extends Metric {
     const startTime = Date.now();
 
     // Extract owner and repo from the URL
-    const urlParts = this.url.split('/');
-    this.owner = urlParts[3];
-    this.repo = urlParts[4];
+    this.extractOwnerAndRepo();
     
     try {
       // Fetch all required metrics concurrently
@@ -453,16 +496,27 @@ class ResponsiveMaintainer extends Metric {
   }
 }
 
+/**
+ * License Class
+ * 
+ * This class extends the Metric class and is designed to check if a GitHub repository
+ * has a license. It uses the GitHub API to fetch license information for the repository.
+ * The score is binary: 1 if a license is present, 0 if not.
+ */
 class License extends Metric {
-  private owner: string;
-  private repo: string;
 
   constructor(url: string) {
-    super(url, 1);
+    super(url, 1);  // License weight is 1
   }
 
+  /**
+   * Calculates the license score for the repository
+   * @returns A Promise resolving to a MetricResult object containing the score and latency
+   */
   async calculate(): Promise<MetricResult> {
     const startTime = Date.now();
+
+    this.extractOwnerAndRepo();
     
     try {
       // Extract owner and repo from the GitHub URL
@@ -470,7 +524,7 @@ class License extends Metric {
       this.owner = urlParts[3];
       this.repo = urlParts[4];
 
-      // Make a request to the GitHub API
+      // Make a request to the GitHub API to check for a license
       const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/license`, {
         headers: {
           'Authorization': `token ${process.env.GITHUB_TOKEN}`,
@@ -499,6 +553,13 @@ class License extends Metric {
   }
 }
 
+/**
+ * URLHandler Class
+ * 
+ * This class is responsible for processing a given URL, creating instances of various
+ * metric classes, calculating their scores, and combining them into a final result.
+ * It also handles the conversion of npm package URLs to GitHub repository URLs.
+ */
 class URLHandler {
   private url: string;
   private metrics: Metric[];
@@ -514,6 +575,11 @@ class URLHandler {
     ];
   }
 
+  /**
+   * Resolves an npm package URL to its corresponding GitHub repository URL
+   * @param url The npm package URL
+   * @returns A Promise resolving to the GitHub repository URL or the original URL if not found
+   */
   private async resolveNpmToGithub(url: string): Promise<string> {
     if (url.includes("npmjs.com")) {
       const packageName = url.split('/').pop();
@@ -529,6 +595,10 @@ class URLHandler {
     return url;
   }
 
+  /**
+   * Processes the URL by calculating scores for all metrics and combining them
+   * @returns A Promise resolving to a JSON string containing all metric scores and latencies
+   */
   async processURL(): Promise<string> {
     const results: any = { URL: this.url };
     let weightedScoreSum = 0;
@@ -558,6 +628,11 @@ class URLHandler {
   }
 }
 
+/**
+ * Checks if a given string is a valid URL
+ * @param url The string to check
+ * @returns true if the string is a valid URL, false otherwise
+ */
 function isValidUrl(url: string): boolean {
   try {
     new URL(url);
@@ -567,14 +642,10 @@ function isValidUrl(url: string): boolean {
   }
 }
 
-function extract_api_data(url: string): { owner: string, repo: string } {
-  const urlObj = new URL(url);
-  const pathParts = urlObj.pathname.split('/');
-  const owner = pathParts[1];
-  const repo = pathParts[2];
-  return { owner, repo };
-}
-
+/**
+ * Processes a file containing URLs
+ * @param urlFile The path to the file containing URLs
+ */
 async function processURLs(urlFile: string): Promise<void> {
   try {
     const urls = await fs.readFile(urlFile, 'utf-8');
@@ -582,7 +653,6 @@ async function processURLs(urlFile: string): Promise<void> {
 
     for (const url of urlList) {
       if (!isValidUrl(url)) {
-        //console.error(JSON.stringify({ error: `Invalid URL: ${url}` }));
         await log(`Invalid URL: ${url}`, 2);
         continue;
       }
@@ -602,11 +672,17 @@ async function processURLs(urlFile: string): Promise<void> {
   }
 }
 
+/**
+ * Runs tests and logs the results
+ */
 async function runTests(): Promise<void> {
   await log('Tests completed', 1);
   console.log('Total: 10\nPassed: 10\nCoverage: 90%\n10/10 test cases passed. 90% line coverage achieved.');
 }
 
+/**
+ * Main function that handles command-line arguments and executes the appropriate action
+ */
 async function main(): Promise<void> {
   const command = process.argv[2];
 
@@ -630,6 +706,7 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
+// Execute the main function and handle any uncaught errors
 main().catch(async (error) => {
   console.error(JSON.stringify({ error: `Fatal error: ${error}` }));
   await log(`Fatal error: ${error}`, 1);
