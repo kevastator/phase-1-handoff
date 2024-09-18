@@ -108,6 +108,8 @@ abstract class Metric {
   constructor(url: string, weight: number) {
     this.url = url;
     this.weight = weight;
+    this.owner = '';
+    this.repo = '';
   }
 
   setUrl(url: string): void {
@@ -133,6 +135,9 @@ class RampUp extends Metric {
 
   constructor(url: string) {
     super(url, 1);
+    this.discussionCount = 0;
+    this.score_calculation = 0;
+    this.lenREADME = 0;
   }
 
   /**
@@ -583,6 +588,9 @@ class URLHandler {
   private async resolveNpmToGithub(url: string): Promise<string> {
     if (url.includes("npmjs.com")) {
       const packageName = url.split('/').pop();
+      if (!packageName) {
+        return url;
+      }
       const githubRepo = await getGithubRepoFromNpm(packageName);
 
       if (githubRepo) {
