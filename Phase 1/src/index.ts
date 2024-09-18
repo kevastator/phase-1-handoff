@@ -100,8 +100,10 @@ interface MetricResult {
  * Base Metric class that all specific metrics inherit from
  */
 abstract class Metric {
-  protected url: string;
+  public  url: string;
   public weight: number;
+  protected owner: string;
+  protected repo: string;
 
   constructor(url: string, weight: number) {
     this.url = url;
@@ -110,6 +112,12 @@ abstract class Metric {
 
   setUrl(url: string): void {
     this.url = url;
+  }
+
+  protected extractOwnerAndRepo(): void {
+    const urlParts = this.url.split('/');
+    this.owner = urlParts[3];
+    this.repo = urlParts[4];
   }
 
   abstract calculate(): Promise<MetricResult>;
@@ -122,8 +130,6 @@ class RampUp extends Metric {
   protected discussionCount: number;
   protected score_calculation: number;
   protected lenREADME: number;
-  private owner: string;
-  private repo: string;
 
   constructor(url: string) {
     super(url, 1);
@@ -163,9 +169,7 @@ class RampUp extends Metric {
     this.discussionCount = 0;
     this.score_calculation = 0;
 
-    const urlParts = this.url.split('/');
-    this.owner = urlParts[3];
-    this.repo = urlParts[4];
+    this.extractOwnerAndRepo();
 
     try {
       this.discussionCount = await this.getNumDiscussions();
@@ -239,8 +243,6 @@ class Correctness extends Metric {
  * BusFactor class for calculating the bus factor metric
  */
 class BusFactor extends Metric {
-  private owner: string;
-  private repo: string;
 
   constructor(url: string) {
     super(url, 3); // weight
@@ -254,9 +256,7 @@ class BusFactor extends Metric {
       
     try {
       // Extract owner and repo from the GitHub URL
-      const urlParts = this.url.split('/');
-      this.owner = urlParts[3];
-      this.repo = urlParts[4];
+      this.extractOwnerAndRepo();
 
       // Make a request to the GitHub API to get the contributors
       const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/contributors`, {
@@ -311,8 +311,6 @@ class BusFactor extends Metric {
  * for each factor, which are then combined into an overall weighted score.
  */
 class ResponsiveMaintainer extends Metric {
-  private owner: string;
-  private repo: string;
 
   constructor(url: string) {
     super(url, 2);  // NetScore weight is 2
@@ -326,9 +324,7 @@ class ResponsiveMaintainer extends Metric {
     const startTime = Date.now();
 
     // Extract owner and repo from the URL
-    const urlParts = this.url.split('/');
-    this.owner = urlParts[3];
-    this.repo = urlParts[4];
+    this.extractOwnerAndRepo();
     
     try {
       // Fetch all required metrics concurrently
@@ -508,8 +504,6 @@ class ResponsiveMaintainer extends Metric {
  * The score is binary: 1 if a license is present, 0 if not.
  */
 class License extends Metric {
-  private owner: string;
-  private repo: string;
 
   constructor(url: string) {
     super(url, 1);  // License weight is 1
@@ -521,6 +515,8 @@ class License extends Metric {
    */
   async calculate(): Promise<MetricResult> {
     const startTime = Date.now();
+
+    this.extractOwnerAndRepo();
     
     try {
       // Extract owner and repo from the GitHub URL
