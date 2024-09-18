@@ -520,14 +520,10 @@ class License extends Metric {
    */
   async calculate(): Promise<MetricResult> {
     const startTime = Date.now();
-
-    this.extractOwnerAndRepo();
     
     try {
       // Extract owner and repo from the GitHub URL
-      const urlParts = this.url.split('/');
-      this.owner = urlParts[3];
-      this.repo = urlParts[4];
+      this.extractOwnerAndRepo();
 
       // Make a request to the GitHub API to check for a license
       const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/license`, {
