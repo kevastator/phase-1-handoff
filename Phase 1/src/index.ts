@@ -63,7 +63,7 @@ async function getGithubRepoFromNpm(packageName: string): Promise<string | null>
     // Repository URL is not available or it's not a GitHub URL
     return null;
   } catch (error) {
-    console.error(`Error fetching data for package ${packageName}: ${error}`);
+    await log(`Error fetching data for package ${packageName}: ${error}`, 2);
     return null;
   }
 }
@@ -95,9 +95,11 @@ class RampUp extends Metric {
   protected discussionCount: number;
   protected score_calculation: number;
   protected lenREADME: number;
+
   constructor(url: string) {
     super(url, 1);
   }
+
   async getNumDiscussions(): Promise<number>{
     const urlParts = this.url.split('/');
     const owner = urlParts[3];
@@ -110,6 +112,7 @@ class RampUp extends Metric {
     });
     return Object.keys(discussionResponse.data).length;
   }
+
   async getLenREADME(): Promise<number>{
     const urlParts = this.url.split('/');
     const owner = urlParts[3];
@@ -127,8 +130,7 @@ class RampUp extends Metric {
     const startTime = Date.now();
     this.discussionCount = 0;
     this.score_calculation = 0;
-    // TODO: none of these work with npm libraries
-    // discussion count
+
     try {
       this.discussionCount = await this.getNumDiscussions();
     } catch (error) {
@@ -193,8 +195,11 @@ class Correctness extends Metric {
 }
 
 class BusFactor extends Metric {
+  private owner: string;
+  private repo: string;
+
   constructor(url: string) {
-    super(url, 1);
+    super(url, 3); // weight
   }
 
   async calculate(): Promise<MetricResult> {
@@ -203,11 +208,11 @@ class BusFactor extends Metric {
     try {
       // Extract owner and repo from the GitHub URL
       const urlParts = this.url.split('/');
-      const owner = urlParts[3];
-      const repo = urlParts[4];
+      this.owner = urlParts[3];
+      this.repo = urlParts[4];
 
       // Make a request to the GitHub API to get the contributors
-      const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/contributors`, {
+      const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/contributors`, {
         headers: {
           'Authorization': `token ${process.env.GITHUB_TOKEN}`,
           'Accept': 'application/vnd.github.v3+json'
@@ -244,18 +249,214 @@ class BusFactor extends Metric {
   }
 }
 
+/**
+ * ResponsiveMaintainer Class
+ * 
+ * This class extends the Metric class and is designed to calculate a responsiveness score
+ * for a GitHub repository maintainer. It assesses the repository's maintenance quality
+ * based on three main factors:
+ * 
+ * 1. Issue handling (40% of the score)
+ * 2. Pull request management (40% of the score)
+ * 3. Commit frequency (20% of the score)
+ * 
+ * The class uses the GitHub API to fetch relevant data and calculates individual scores
+ * for each factor, which are then combined into an overall weighted score.
+ */
 class ResponsiveMaintainer extends Metric {
+  private owner: string;
+  private repo: string;
+
   constructor(url: string) {
-    super(url, 3);  // Weight is 3 for ResponsiveMaintainer
+    super(url, 2);  // NetScore weight is 2
   }
 
+  /**
+   * Calculates the overall responsiveness score for the repository
+   * @returns A Promise resolving to a MetricResult object containing the score and latency
+   */
   async calculate(): Promise<MetricResult> {
-    // TODO: Implement ResponsiveMaintainer calculation
-    return { score: 0.4, latency: 0.002 };
+    const startTime = Date.now();
+
+    // Extract owner and repo from the URL
+    const urlParts = this.url.split('/');
+    this.owner = urlParts[3];
+    this.repo = urlParts[4];
+    
+    try {
+      // Fetch all required metrics concurrently
+      const [issueMetrics, pullRequestMetrics, commitFrequency] = await Promise.all([
+        this.getIssueMetrics(),
+        this.getPullRequestMetrics(),
+        this.getCommitFrequency()
+      ]);
+
+      // Calculate individual scores
+      const issueScore = this.calculateIssueScore(issueMetrics);
+      const prScore = this.calculatePRScore(pullRequestMetrics);
+      const commitScore = this.calculateCommitScore(commitFrequency);
+
+      // Calculate overall score (weighted average)
+      const overallScore = (issueScore * 0.4 + prScore * 0.4 + commitScore * 0.2);
+
+      const latency = (Date.now() - startTime) / 1000; // Convert to seconds
+      return { score: overallScore, latency };
+    } catch (error) {
+      await log(`Error calculating ResponsiveMaintainer score for ${this.url}: ${error}`, 2);
+      return { score: 0, latency: (Date.now() - startTime) / 1000 };
+    }
+  }
+
+  /**
+   * Fetches issue-related metrics from the GitHub API
+   * @returns An object containing average resolution time and open issues ratio
+   */
+  private async getIssueMetrics(): Promise<{ avgResolutionTime: number, openIssuesRatio: number }> {
+    try {
+      const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/issues?state=all&per_page=100`, {
+        headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}` }
+      });
+
+      const issues = response.data;
+      const closedIssues = issues.filter((issue: any) => issue.state === 'closed');
+      const totalIssues = issues.length;
+
+      // Calculate average resolution time in days
+      const resolutionTimes = closedIssues.map((issue: any) => {
+        const createdAt = new Date(issue.created_at);
+        const closedAt = new Date(issue.closed_at);
+        return (closedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+      });
+
+      const avgResolutionTime = resolutionTimes.length > 0 ? resolutionTimes.reduce((a: number, b: number) => a + b, 0) / resolutionTimes.length : Infinity;
+      const openIssuesRatio = totalIssues > 0 ? (totalIssues - closedIssues.length) / totalIssues : 1;
+
+      return { avgResolutionTime, openIssuesRatio };
+    } catch (error) {
+      await this.handleApiError('getIssueMetrics', error);
+      return { avgResolutionTime: Infinity, openIssuesRatio: 1 }; // Worst case scenario
+    }
+  }
+
+  /**
+   * Fetches pull request-related metrics from the GitHub API
+   * @returns An object containing average merge time and open PRs ratio
+   */
+  private async getPullRequestMetrics(): Promise<{ avgMergeTime: number, openPRsRatio: number }> {
+    try {
+      const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/pulls?state=all&per_page=100`, {
+        headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}` }
+      });
+
+      const prs = response.data;
+      const mergedPRs = prs.filter((pr: any) => pr.merged_at);
+      const totalPRs = prs.length;
+
+      // Calculate average merge time in days
+      const mergeTimes = mergedPRs.map((pr: any) => {
+        const createdAt = new Date(pr.created_at);
+        const mergedAt = new Date(pr.merged_at);
+        return (mergedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+      });
+
+      const avgMergeTime = mergeTimes.length > 0 ? mergeTimes.reduce((a: number, b: number) => a + b, 0) / mergeTimes.length : Infinity;
+      const openPRsRatio = totalPRs > 0 ? (totalPRs - mergedPRs.length) / totalPRs : 1;
+
+      return { avgMergeTime, openPRsRatio };
+    } catch (error) {
+      await this.handleApiError('getPullRequestMetrics', error);
+      return { avgMergeTime: Infinity, openPRsRatio: 1 }; // Worst case scenario
+    }
+  }
+
+  /**
+   * Fetches the number of commits made in the last year
+   * @returns The number of commits made in the last year
+   */
+  private async getCommitFrequency(): Promise<number> {
+    try {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+      const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/commits?since=${oneYearAgo.toISOString()}&per_page=100`, {
+        headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}` }
+      });
+
+      return response.data.length;
+    } catch (error) {
+      await this.handleApiError('getCommitFrequency', error);
+      return 0; // Worst case scenario: no commits
+    }
+  }
+
+  /**
+   * Calculates the issue handling score based on average resolution time and open issues ratio
+   * @param metrics Object containing avgResolutionTime and openIssuesRatio
+   * @returns A score between 0 and 1
+   */
+  private calculateIssueScore(metrics: { avgResolutionTime: number, openIssuesRatio: number }): number {
+    const resolutionScore = metrics.avgResolutionTime === Infinity ? 0 : Math.max(0, 1 - (metrics.avgResolutionTime / 30)); // Assuming 30 days as a limit
+    const openIssuesScore = 1 - metrics.openIssuesRatio;
+    return (resolutionScore + openIssuesScore) / 2;
+  }
+
+  /**
+   * Calculates the pull request management score based on average merge time and open PRs ratio
+   * @param metrics Object containing avgMergeTime and openPRsRatio
+   * @returns A score between 0 and 1
+   */
+  private calculatePRScore(metrics: { avgMergeTime: number, openPRsRatio: number }): number {
+    const mergeScore = metrics.avgMergeTime === Infinity ? 0 : Math.max(0, 1 - (metrics.avgMergeTime / 7)); // Assuming 7 days as a limit
+    const openPRsScore = 1 - metrics.openPRsRatio;
+    return (mergeScore + openPRsScore) / 2;
+  }
+
+  /**
+   * Calculates the commit frequency score based on the number of commits in the last year
+   * @param commitFrequency Number of commits in the last year
+   * @returns A score between 0 and 1
+   */
+  private calculateCommitScore(commitFrequency: number): number {
+    // Assuming 52 commits (1 per week) as a good baseline for active maintenance
+    return Math.min(1, commitFrequency / 52);
+  }
+
+  /**
+   * Handles and logs API errors
+   * @param method The name of the method where the error occurred
+   * @param error The error object
+   */
+  private async handleApiError(method: string, error: any): Promise<void> {
+    if (axios.isAxiosError(error)) {
+      if (error.response) {
+        switch (error.response.status) {
+          case 404:
+            await log(`${method}: Repository not found or API endpoint doesn't exist`, 2);
+            break;
+          case 403:
+            await log(`${method}: API rate limit exceeded or lacking permissions`, 2);
+            break;
+          case 401:
+            await log(`${method}: Unauthorized. Check your GitHub token`, 2);
+            break;
+          default:
+            await log(`${method}: API request failed with status ${error.response.status}`, 2);
+        }
+      } else if (error.request) {
+        await log(`${method}: No response received from the server`, 2);
+      } else {
+        await log(`${method}: Error setting up the request`, 2);
+      }
+    } else {
+      await log(`${method}: Non-Axios error occurred: ${error}`, 2);
+    }
   }
 }
 
 class License extends Metric {
+  private owner: string;
+  private repo: string;
+
   constructor(url: string) {
     super(url, 1);
   }
@@ -266,11 +467,11 @@ class License extends Metric {
     try {
       // Extract owner and repo from the GitHub URL
       const urlParts = this.url.split('/');
-      const owner = urlParts[3];
-      const repo = urlParts[4];
+      this.owner = urlParts[3];
+      this.repo = urlParts[4];
 
       // Make a request to the GitHub API
-      const response = await axios.get(`https://api.github.com/repos/${owner}/${repo}/license`, {
+      const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/license`, {
         headers: {
           'Authorization': `token ${process.env.GITHUB_TOKEN}`,
           'Accept': 'application/vnd.github.v3+json'
@@ -381,7 +582,7 @@ async function processURLs(urlFile: string): Promise<void> {
 
     for (const url of urlList) {
       if (!isValidUrl(url)) {
-        console.error(JSON.stringify({ error: `Invalid URL: ${url}` }));
+        //console.error(JSON.stringify({ error: `Invalid URL: ${url}` }));
         await log(`Invalid URL: ${url}`, 2);
         continue;
       }
