@@ -231,16 +231,103 @@ class RampUp extends Metric {
 
 /**
  * Correctness class for calculating the correctness metric
- * TODO: Implement actual correctness calculation
+ * This metric is based on two sub-metrics:
+ * 1. Last CI job status (50% weight)
+ *    The last CI job status is determined by the conclusion of the latest GitHub Actions run.
+ * 2. Pull request fix ratio (50% weight)
+ *    The pull request fix ratio is calculated as the ratio of open pull requests that contain 'fix' 'bug' or 'issue' in the title.
+ * The final score is a weighted average of the two sub-metrics.
  */
 class Correctness extends Metric {
   constructor(url: string) {
     super(url, 1);
   }
 
+  async isLastJobSuccessful(): Promise <number>{
+    
+    // TODO: can we only call the latest run? (instaed of calling all then only using the last one)
+    // getting last run id
+    try{
+      const run_id_response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/actions/runs`, {
+        headers: {
+          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+      // if no CI are present (not as good as if they had made some and passed)
+      if (run_id_response.data.total_count == 0){
+        return .75;
+      }
+      const run_id = run_id_response.data.workflow_runs[0].id;
+
+      // getting last job status from last run id
+      const runID_jobs_response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/actions/runs/${run_id}/jobs`, {
+        headers: {
+          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+      // if no jobs are present (not as good as if they had made some and passed)
+      if (runID_jobs_response.data.total_count == 0){
+        return 0.75; 
+      }
+      // main return value
+      return runID_jobs_response.data.jobs[0].conclusion == 'success' ? 1 : 0;
+    } catch (error){
+      
+      await log(`Error checking CI job status for ${this.url}: ${error}`, 2);
+      return 0;
+    }
+  }
+  async getPullRequestFixRatio(): Promise <number>{
+    
+    // Listing pull requests
+    try{
+      let numOpenPullFixes = 0;
+      const pullsListResponse = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/pulls`, {
+        headers: {
+          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
+    
+    // using results from API call to get number of pull requests
+    const numPullRequests = pullsListResponse.data.length > 30 ? 30 : pullsListResponse.data.length;
+    for (let i = 0; i < numPullRequests; i++){
+
+      // checks if pull request is open and contains 'fix' or 'bug' in title
+      const pullData = pullsListResponse.data[i];
+      if (pullData.state == 'open'){
+        if (pullData.title.includes('fix') || pullData.title.includes('bug') || pullData.title.includes('issue')){
+          numOpenPullFixes++;
+        } 
+      }
+    }
+    // return the ratio of open pull requests that are fixes
+    if (numPullRequests == 0){
+      return 0.75;
+    }
+    return  (numPullRequests - numOpenPullFixes) / numPullRequests;
+  }
+    catch (error){
+      await log(`Error checking pull request info for ${this.url}: ${error}`, 2);
+      return 0;
+    }
+  }
+
   async calculate(): Promise<MetricResult> {
-    // TODO: cloning may be needed
-    return { score: 0.7, latency: 0.005 };
+    this.extractOwnerAndRepo();
+    const startTime = Date.now();
+
+    // getting last job status (error handling in function)
+    const lastJobStatus = await this.isLastJobSuccessful();
+
+    // try getting pull request info (error handling in function)
+    const getPullRequestFixRatio = await this.getPullRequestFixRatio();
+
+    const latency = (Date.now() - startTime) / 1000; // Convert to seconds
+
+    return { score: 0.5 * lastJobStatus + 0.5 * getPullRequestFixRatio, latency};
   }
 }
 
