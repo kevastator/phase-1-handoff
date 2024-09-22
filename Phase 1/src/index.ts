@@ -877,6 +877,20 @@ async function runTests(): Promise<void> {
 async function main(): Promise<void> {
   const command = process.argv[2];
 
+  // check if GITHUB_TOKEN is valid
+  axios.get('https://api.github.com', {
+    headers: {
+      'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+      'Accept': 'application/vnd.github.v3+json'
+    }
+  }).then(() => {
+    log('GITHUB_TOKEN is valid', 2);
+  }).catch(() => {
+    console.error("GITHUB_TOKEN is invalid");
+    log('GITHUB_TOKEN is invalid', 2);
+    process.exit(1);
+  });
+
   switch (command) {
     case 'test':
       log('Test Case', 1);
