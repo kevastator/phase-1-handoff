@@ -76,3 +76,5 @@ else
 fi
 
 log 2 "Script execution completed"
+
+exit 0
