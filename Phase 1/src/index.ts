@@ -11,9 +11,11 @@
  * and output the results in NDJSON format.
  */
 
-import { promises as fs } from 'fs';
+import { promises as fs, existsSync, mkdirSync, readFileSync, unlink } from 'fs';
 import * as path from 'path';
 import axios from 'axios';
+import * as http from 'isomorphic-git/http/node';
+import * as git from 'isomorphic-git';
 
 // Check for required environment variables
 if (!process.env.LOG_FILE) {
@@ -505,13 +507,107 @@ class ResponsiveMaintainer extends Metric {
  * License Class
  * 
  * This class extends the Metric class and is designed to check if a GitHub repository
- * has a license. It uses the GitHub API to fetch license information for the repository.
- * The score is binary: 1 if a license is present, 0 if not.
+ * has a compatible license. It uses the isomorphic-git library to clone the repository
+ * The score is binary: 1 if a license is compatible, 0 otherwise.
+ * also stores the license (and README if needed) in a local directory for future reference
+ * NO API CALLS
  */
 class License extends Metric {
 
   constructor(url: string) {
     super(url, 1);  // License weight is 1
+  }
+
+  // clones license from repoURL into dir
+  // TODO urls with ssh will not work, sometimes happens with npm packages
+  private async cloneLicenseFile(repoUrl: string): Promise<string> {
+    
+    const dir =`./repo-licenses/${this.repo}`;
+    // Ensure the directory exists
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+  
+    // Clone the repository
+    await git.clone({
+      fs,
+      http,
+      dir,
+      url: repoUrl,
+      singleBranch: true,
+      depth: 1,
+      noCheckout: true,
+    });
+  
+    // Checkout only the LICENSE file
+    await git.checkout({
+      fs,
+      dir,
+      ref: 'HEAD',
+      filepaths: ['LICENSE'],
+      force: true,
+    });
+
+    // get license from local directory, different extensions used
+    const licenseFiles = ['/LICENSE', '/LICENSE.md', '/LICENSE.txt'];
+    for (const file of licenseFiles) {
+      const licensePathWithFile = path.join(dir, file);
+      if (existsSync(licensePathWithFile)) {
+      const licenseContent = readFileSync(licensePathWithFile, 'utf8');
+      await log(`Found ${file} for: ${repoUrl}`, 2);
+      return licenseContent;
+      }
+    }
+
+    // Could not find LICENSE in local directory
+    await log(`LICENSE not found for: ${repoUrl}`, 2);
+    return 'null';
+  }
+
+  /**
+   * Clones the README file from the repository and checks for the word "license"
+   * @returns The contents of the README file if it contains the word "license", 'null' otherwise
+   * only runs if no LICENSE file is found
+   */
+  private async cloneREADMElicense(): Promise<string> {
+    const dir = `./repo-readmes/${this.repo}`;
+    // Ensure the directory exists
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+
+    // Clone the repository
+    await git.clone({
+      fs,
+      http,
+      dir,
+      url: this.url,
+      singleBranch: true,
+      depth: 1,
+      noCheckout: true,
+    });
+
+    // Checkout only the README file
+    await git.checkout({
+      fs,
+      dir,
+      ref: 'HEAD',
+      filepaths: ['README.md'],
+      force: true,
+    });
+
+    // Read the README file
+    const readmePath = path.join(dir, 'README.md');
+    if (existsSync(readmePath)) {
+      const readmeContent = readFileSync(readmePath, 'utf8');
+      if (readmeContent.toLowerCase().includes('license')) {
+        await log(`Found "license" in README for: ${this.url}`, 2);
+        return readmeContent;
+      }
+    }
+
+    await log(`"license" not found in README for: ${this.url}`, 2);
+    return 'null';
   }
 
   /**
@@ -520,39 +616,43 @@ class License extends Metric {
    */
   async calculate(): Promise<MetricResult> {
     const startTime = Date.now();
-    
+    this.extractOwnerAndRepo();
+
+    // checking for license file
     try {
       // Extract owner and repo from the GitHub URL
-      this.extractOwnerAndRepo();
-
-      // Make a request to the GitHub API to check for a license
-      const response = await axios.get(`https://api.github.com/repos/${this.owner}/${this.repo}/license`, {
-        headers: {
-          'Authorization': `token ${process.env.GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github.v3+json'
+      const license = await this.cloneLicenseFile(this.url);
+      
+      if (license != 'null'){
+        // Calculate latency
+        const latency = (Date.now() - startTime) / 1000; // Convert to seconds
+        // Return a score of 1 if license is compatable, 0 otherwise
+        if (license.includes('MIT') || license.includes('Apache 2.0') || license.includes('GPLv2') || license.includes('GNU')) {
+          return { score: 1, latency };
         }
-      });
-
-      // Calculate latency
-      const latency = (Date.now() - startTime) / 1000; // Convert to seconds
-
-      // If we get a successful response, it means the repo has a license
-      return { score: 1, latency };
-    } catch (error) {
-      // Calculate latency even if there's an error
-      const latency = (Date.now() - startTime) / 1000;
-
-      if (axios.isAxiosError(error) && error.response?.status === 404) {
-        // If we get a 404, it means the repo doesn't have a license
-        return { score: 0, latency };
-      } else {
-        // For any other error, log it and return a score of 0
-        await log(`Error checking license for ${this.url}: ${error}`, 2);
-        return { score: 0, latency };
       }
+    } catch (error) {
+      await log(`Error checking license for ${this.url}: ${error}`, 2);
+    }
+
+    // checking for license in README
+    // only runs if no LICENSE file is found
+    try{
+    const READMElicense = await this.cloneREADMElicense();
+    if (READMElicense != 'null'){
+      const latency = (Date.now() - startTime) / 1000;
+      if (READMElicense.includes('MIT') || READMElicense.includes('Apache 2.0') || READMElicense.includes('GPLv2') || READMElicense.includes('GNU')) {
+        return { score: 1, latency };
+      }
+  }
+  } catch (error) {
+    await log(`Error checking README for license for ${this.url}: ${error}`, 2);
+  }
+    // return a score of 0 if no license is found or not one of the compatable licenses
+    const latency = (Date.now() - startTime) / 1000;
+    return { score: 0, latency };
     }
   }
-}
 
 /**
  * URLHandler Class
