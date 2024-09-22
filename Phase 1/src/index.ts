@@ -17,6 +17,8 @@ import * as path from 'path';
 import axios from 'axios';
 import * as http from 'isomorphic-git/http/node';
 import * as git from 'isomorphic-git';
+const { promisify } = require('util');
+const { exec } = require('child_process');
 
 // Check for required environment variables
 if (!process.env.LOG_FILE) {
@@ -957,8 +959,25 @@ async function processURLs(urlFile: string): Promise<void> {
  * Runs tests and logs the results
  */
 async function runTests(): Promise<void> {
-  await log('Tests completed', 1);
-  console.log('Total: 10\nPassed: 10\nCoverage: 90%\n10/10 test cases passed. 90% line coverage achieved.');
+  console.log('Test Suite started');
+
+  const execAsync = promisify(exec);
+  try {
+  const {stdout, stderr} = await execAsync(`npm test`); // runs jest tests
+  console.log(stderr);
+  } catch (error) {
+    console.error(JSON.stringify({ error: `Error running tests: ${error}` }));  
+  }
+  // TODO only print total coverage, rather than the whole json file
+  const coverageSummaryPath = path.join('coverage/', 'coverage-summary.json');
+  try {
+    const coverageSummary = await fs.readFile(coverageSummaryPath, 'utf-8');
+    console.log('Coverage Summary:', coverageSummary);
+  } catch (error) {
+    console.error(JSON.stringify({ error: `Error reading coverage summary: ${error}` }));
+    await log(`Error reading coverage summary: ${error}`, 2);
+  }
+  console.log('Test Suite finished');
 }
 
 /**
