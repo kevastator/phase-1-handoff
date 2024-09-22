@@ -873,7 +873,7 @@ async function runTests(): Promise<void> {
 
   const execAsync = promisify(exec);
   try {
-  const {stdout, stderr} = await execAsync(`npm test --colors --coverage --coverageReporters="json-summary" `); // runs jest tests
+  const {stdout, stderr} = await execAsync(`npm test`); // runs jest tests
   console.log(stderr);
   } catch (error) {
     console.error(JSON.stringify({ error: `Error running tests: ${error}` }));  
