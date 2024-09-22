@@ -12,6 +12,7 @@
  */
 
 import { promises as fs, existsSync, mkdirSync, readFileSync, unlink } from 'fs';
+import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';;
 import * as path from 'path';
 import axios from 'axios';
 import * as http from 'isomorphic-git/http/node';
@@ -124,6 +125,10 @@ abstract class Metric {
     this.repo = urlParts[4];
   }
 
+  static getWeight(): number {
+    throw new Error("getWeight must be implemented by subclasses");
+  }
+
   abstract calculate(): Promise<MetricResult>;
 }
 
@@ -140,6 +145,10 @@ class RampUp extends Metric {
     this.discussionCount = 0;
     this.score_calculation = 0;
     this.lenREADME = 0;
+  }
+
+  static getWeight(): number {
+    return 1;
   }
 
   /**
@@ -245,6 +254,10 @@ class Correctness extends Metric {
     super(url, 1);
   }
 
+  static getWeight(): number {
+    return 1;
+  }
+
   async isLastJobSuccessful(): Promise <number>{
     
     // TODO: can we only call the latest run? (instaed of calling all then only using the last one)
@@ -342,6 +355,10 @@ class BusFactor extends Metric {
     super(url, 3); // weight
   }
 
+  static getWeight(): number {
+    return 3;
+  }
+
   /**
    * Calculates the bus factor score based on the number of contributors
    */
@@ -408,6 +425,10 @@ class ResponsiveMaintainer extends Metric {
 
   constructor(url: string) {
     super(url, 2);  // NetScore weight is 2
+  }
+
+  static getWeight(): number {
+    return 2;
   }
 
   /**
@@ -605,6 +626,10 @@ class License extends Metric {
     super(url, 1);  // License weight is 1
   }
 
+  static getWeight(): number {
+    return 1;
+  }
+
   // clones license from repoURL into dir
   // TODO urls with ssh will not work, sometimes happens with npm packages
   private async cloneLicenseFile(repoUrl: string): Promise<string> {
@@ -750,17 +775,11 @@ class License extends Metric {
  */
 class URLHandler {
   private url: string;
-  private metrics: Metric[];
+  private metricClasses: (typeof Metric)[];
 
   constructor(url: string) {
     this.url = url;
-    this.metrics = [
-      new RampUp(url),
-      new Correctness(url),
-      new BusFactor(url),
-      new ResponsiveMaintainer(url),
-      new License(url)
-    ];
+    this.metricClasses = [RampUp, Correctness, BusFactor, ResponsiveMaintainer, License];
   }
 
   /**
@@ -786,38 +805,109 @@ class URLHandler {
     return url;
   }
 
+  private createWorker(MetricClass: typeof Metric, url: string): Promise<{ score: number; latency: number }> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(__filename, {
+        workerData: { metricClassName: MetricClass.name, url }
+      });
+
+      worker.on('message', resolve);
+      worker.on('error', reject);
+      worker.on('exit', (code) => {
+        if (code !== 0)
+          reject(new Error(`Worker stopped with exit code ${code}`));
+      });
+    });
+  }
+
   /**
    * Processes the URL by calculating scores for all metrics and combining them
+   * Process the metrics in parallel
    * @returns A Promise resolving to a JSON string containing all metric scores and latencies
    */
   async processURL(): Promise<string> {
-    const results: any = { URL: this.url };
+    const results: any = {};
     let weightedScoreSum = 0;
     let totalWeight = 0;
     let netScoreLatency = 0;
 
+    const startTime = Date.now();
+
     // Resolve npm URL to GitHub if necessary
     const resolvedUrl = await this.resolveNpmToGithub(this.url);
 
-    for (const metric of this.metrics) {
-      metric.setUrl(resolvedUrl); // Update the URL for each metric
-      const metricName = metric.constructor.name;
-      const { score, latency } = await metric.calculate();
+    // Create workers for each metric
+    const workerPromises = this.metricClasses.map(MetricClass => 
+      this.createWorker(MetricClass, resolvedUrl)
+    );
 
-      results[metricName] = score;
-      results[`${metricName}_Latency`] = latency;
+    // Wait for all workers to complete
+    const metricResults = await Promise.all(workerPromises);
 
-      weightedScoreSum += score * metric.weight;
-      totalWeight += metric.weight;
-      netScoreLatency += latency;
-    }
+    // Process results
+    this.metricClasses.forEach((MetricClass, index) => {
+      const { score, latency } = metricResults[index];
+      const metricName = MetricClass.name;
+      const weight = MetricClass.getWeight(); 
 
-    results.NetScore = weightedScoreSum / totalWeight;
-    results.NetScore_Latency = netScoreLatency;
+      results[metricName] = Number(score.toFixed(3));
+      results[`${metricName}_Latency`] = Number(latency.toFixed(3));
 
-    return JSON.stringify(results);
+      weightedScoreSum += score * weight;
+      totalWeight += weight;
+    });
+
+    netScoreLatency = (Date.now() - startTime) / 1000; // Convert to seconds
+
+    // Calculate NetScore and NetScore_Latency
+    const netScore = Number((weightedScoreSum / totalWeight).toFixed(3));
+    const netScoreLatencyRounded = Number(netScoreLatency.toFixed(3));
+
+    // Create the final output object with NetScore and NetScore_Latency first
+    const finalOutput = {
+      URL: this.url,
+      NetScore: netScore,
+      NetScore_Latency: netScoreLatencyRounded,
+      ...results
+    };
+
+    return JSON.stringify(finalOutput);
   }
 }
+
+if (!isMainThread) {
+  const metricClasses = {
+    RampUp,
+    Correctness,
+    BusFactor,
+    ResponsiveMaintainer,
+    License
+  };
+
+  const runMetric = async () => {
+    const { metricClassName, url } = workerData;
+    const MetricClass = metricClasses[metricClassName as keyof typeof metricClasses];
+    
+    if (!MetricClass) {
+      throw new Error(`Unknown metric class: ${metricClassName}`);
+    }
+
+    const metric = new MetricClass(url);
+    const result = await metric.calculate();
+
+    if (parentPort) {
+      parentPort.postMessage(result);
+    } else {
+      console.error('parentPort is null');
+    }
+  };
+
+  runMetric().catch(error => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
 
 /**
  * Checks if a given string is a valid URL
@@ -912,8 +1002,10 @@ async function main(): Promise<void> {
 }
 
 // Execute the main function and handle any uncaught errors
-main().catch(async (error) => {
-  console.error(JSON.stringify({ error: `Fatal error: ${error}` }));
-  await log(`Fatal error: ${error}`, 1);
-  process.exit(1);
-});
+if (isMainThread) {
+  main().catch(async (error) => {
+    console.error(JSON.stringify({ error: `Fatal error: ${error}` }));
+    await log(`Fatal error: ${error}`, 1);
+    process.exit(1);
+  });
+}
