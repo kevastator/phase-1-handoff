@@ -96,3 +96,20 @@ describe('getGithubRepoFromNpm', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('log', () => {
+  test('should log messages based on LOG_LEVEL', async () => {
+    const originalLogLevel = process.env.LOG_LEVEL;
+    const originalLogFile = process.env.LOG_FILE;
+
+    process.env.LOG_LEVEL = '2';
+    process.env.LOG_FILE = 'test.log';
+
+    await log('Test message', 1);
+    await log('Debug message', 2);
+
+    process.env.LOG_LEVEL = originalLogLevel;
+    process.env.LOG_FILE = originalLogFile;
+  });
+});
+
