@@ -975,7 +975,7 @@ async function runTests(): Promise<void> {
 
     console.log(`Total: ${total}`);
     console.log(`Passed: ${passed}`);
-    console.log(`Coverage: ${lineCoverage}`);
+    console.log(`Coverage: ${lineCoverage}%`);
 
     console.log(
       `${passed}/${total} test cases passed. ${lineCoverage}% line coverage achieved.`
