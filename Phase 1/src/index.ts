@@ -12,7 +12,8 @@
  */
 
 import { promises as fs, existsSync, mkdirSync, readFileSync, unlink } from 'fs';
-import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';;
+import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';
+import { execSync } from 'child_process';
 import * as path from 'path';
 import axios from 'axios';
 import * as http from 'isomorphic-git/http/node';
@@ -959,25 +960,34 @@ async function processURLs(urlFile: string): Promise<void> {
  * Runs tests and logs the results
  */
 async function runTests(): Promise<void> {
-  console.log('Test Suite started');
+  log('Running tests', 1);
 
-  const execAsync = promisify(exec);
   try {
-  const {stdout, stderr} = await execAsync(`npm test`); // runs jest tests
-  console.log(stderr);
+    // Run Jest with coverage
+    const result = execSync('npm test', { encoding: 'utf-8' });
+
+    // Parse the Jest output
+    const lines = result.split('\n');
+    const testSummary = lines.find(line => line.includes('Tests:'));
+    const coverageSummary = lines.find(line => line.includes('All files'));
+    
+    if (testSummary && coverageSummary) {
+      const [, passed, total] = testSummary.match(/(\d+) passed, (\d+) total/) || [];
+      const [, coverage] = coverageSummary.match(/(\d+(?:\.\d+)?)%/) || [];
+      
+      console.log(`Total: ${total}`);
+      console.log(`Passed: ${passed}`);
+      console.log(`Coverage: ${coverage}%`);
+      console.log(`${passed}/${total} test cases passed. ${coverage}% line coverage achieved.`);
+    } else {
+      console.log('Unable to parse test results.');
+    }
+
+    await log('Tests completed', 1);
   } catch (error) {
-    console.error(JSON.stringify({ error: `Error running tests: ${error}` }));  
+    console.error('Error running tests:', error);
+    await log(`Error running tests: ${error}`, 2);
   }
-  // TODO only print total coverage, rather than the whole json file
-  const coverageSummaryPath = path.join('coverage/', 'coverage-summary.json');
-  try {
-    const coverageSummary = await fs.readFile(coverageSummaryPath, 'utf-8');
-    console.log('Coverage Summary:', coverageSummary);
-  } catch (error) {
-    console.error(JSON.stringify({ error: `Error reading coverage summary: ${error}` }));
-    await log(`Error reading coverage summary: ${error}`, 2);
-  }
-  console.log('Test Suite finished');
 }
 
 /**
