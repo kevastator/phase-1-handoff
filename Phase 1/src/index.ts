@@ -876,7 +876,7 @@ class URLHandler {
 
     return JSON.stringify(finalOutput);
   }
-}
+} 
 
 if (!isMainThread) {
   const metricClasses = {
@@ -968,20 +968,18 @@ async function runTests(): Promise<void> {
 
     // Parse the Jest output
     const lines = result.split('\n');
-    const testSummary = lines.find(line => line.includes('Tests:'));
-    const coverageSummary = lines.find(line => line.includes('All files'));
-    
-    if (testSummary && coverageSummary) {
-      const [, passed, total] = testSummary.match(/(\d+) passed, (\d+) total/) || [];
-      const [, coverage] = coverageSummary.match(/(\d+(?:\.\d+)?)%/) || [];
-      
-      console.log(`Total: ${total}`);
-      console.log(`Passed: ${passed}`);
-      console.log(`Coverage: ${coverage}%`);
-      console.log(`${passed}/${total} test cases passed. ${coverage}% line coverage achieved.`);
-    } else {
-      console.log('Unable to parse test results.');
-    }
+
+    const lineCoverage = lines.find((line) => line.includes('All files'))?.split('|')[4].trim();
+    const testSummary = lines.find((line) => line.includes('Tests:'));
+    const [, passed, total] = testSummary?.match(/(\d+) passed, (\d+) total/) || [];
+
+    console.log(`Total: ${total}`);
+    console.log(`Passed: ${passed}`);
+    console.log(`Coverage: ${lineCoverage}`);
+
+    console.log(
+      `${passed}/${total} test cases passed. ${lineCoverage}% line coverage achieved.`
+    );
 
     await log('Tests completed', 1);
   } catch (error) {
@@ -989,6 +987,11 @@ async function runTests(): Promise<void> {
     await log(`Error running tests: ${error}`, 2);
   }
 }
+
+
+// Export the necessary functions and classes
+export {URLHandler, Metric, RampUp, Correctness, BusFactor, ResponsiveMaintainer, License, 
+        isValidUrl, processURLs, getGithubRepoFromNpm, log};
 
 /**
  * Main function that handles command-line arguments and executes the appropriate action
@@ -1032,9 +1035,11 @@ async function main(): Promise<void> {
 
 // Execute the main function and handle any uncaught errors
 if (isMainThread) {
-  main().catch(async (error) => {
-    console.error(JSON.stringify({ error: `Fatal error: ${error}` }));
-    await log(`Fatal error: ${error}`, 1);
-    process.exit(1);
-  });
+  if (require.main === module) {
+    main().catch(async (error) => {
+      console.error(JSON.stringify({ error: `Fatal error: ${error}` }));
+      await log(`Fatal error: ${error}`, 1);
+      process.exit(1);
+    });
+  }
 }
