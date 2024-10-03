@@ -20,6 +20,9 @@ import * as http from 'isomorphic-git/http/node';
 import * as git from 'isomorphic-git';
 const { promisify } = require('util');
 const { exec } = require('child_process');
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Check for required environment variables
 if (!process.env.LOG_FILE) {
